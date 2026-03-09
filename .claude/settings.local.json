@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(set:*)",
+      "Bash(createdb:*)",
+      "Bash(psql:*)",
+      "Bash(where:*)",
+      "Bash(\"C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe\" -U postgres -c \"CREATE DATABASE ai_media_platform;\")",
+      "Bash(\"C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe\" -U postgres -l)",
+      "Bash(npm run prisma:generate:*)",
+      "Bash(npm run start:dev:*)",
+      "Bash(ping:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(if not exist .env.local copy .env.local.example .env.local)",
+      "Bash(powershell -Command:*)",
+      "Bash(curl:*)",
+      "Bash(Get-Process -Name node -ErrorAction SilentlyContinue)",
+      "Bash(Where-Object { $_MainWindowTitle -eq '' })",
+      "Bash(Stop-Process -Force)",
+      "Bash(powershell \"Get-Process -Name node -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, @{Name=''Port'';Expression={\\(netstat -ano | findstr $_Id | findstr LISTENING\\)[0]}}\")",
+      "Bash(powershell \"Get-Process -Name node -ErrorAction SilentlyContinue | Select-Object Id, @{Name=''Port'';Expression={\\(netstat -ano | findstr $_Id | findstr LISTENING | Select-Object -First 1\\)}}\")",
+      "Bash(powershell \"netstat -ano | findstr LISTENING | findstr '':300''\")",
+      "Bash(npm run build:*)",
+      "Bash(npx prisma migrate dev:*)",
+      "Bash(npx nest build:*)",
+      "Bash(timeout:*)"
+    ]
+  }
+}

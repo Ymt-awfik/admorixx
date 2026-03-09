@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run prisma:migrate:*)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\admin\\OneDrive\\Desktop\\lalal\\ai-media-platform"
+    ]
+  }
+}

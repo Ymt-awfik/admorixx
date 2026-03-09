@@ -1,0 +1,622 @@
+// AI Media Buying Intelligence Platform - Database Schema
+// Production-grade multi-tenant architecture
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER & AUTHENTICATION
+// ============================================
+
+enum UserRole {
+  USER         // Normal user: 1 account per platform
+  MEDIA_BUYER  // Media buyer: unlimited accounts
+
+  @@map("user_role")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String   @map("password_hash")
+  role          UserRole @default(USER)
+
+  isEmailVerified Boolean @default(false) @map("is_email_verified")
+  isActive        Boolean @default(true) @map("is_active")
+
+  // Password reset
+  passwordResetToken   String? @map("password_reset_token")
+  passwordResetExpires DateTime? @map("password_reset_expires")
+
+  // Onboarding
+  hasConnectedAdAccount Boolean @default(false) @map("has_connected_ad_account")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  lastLoginAt DateTime? @map("last_login_at")
+
+  // Relations
+  profile     UserProfile?
+  adAccounts  AdAccount[]
+  decisionLogs DecisionLog[]
+  creativeIdeas CreativeIdea[]
+  agentActions AgentAction[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model UserProfile {
+  id        String   @id @default(uuid())
+  userId    String   @unique @map("user_id")
+
+  firstName String?  @map("first_name")
+  lastName  String?  @map("last_name")
+  company   String?
+  timezone  String   @default("UTC")
+
+  // Notification preferences
+  emailNotifications  Boolean @default(true) @map("email_notifications")
+  weeklyReport        Boolean @default(true) @map("weekly_report")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+// ============================================
+// AD ACCOUNTS & OAUTH
+// ============================================
+
+enum AdPlatform {
+  GOOGLE_ADS
+  FACEBOOK_ADS
+  TIKTOK_ADS
+
+  @@map("ad_platform")
+}
+
+model AdAccount {
+  id              String     @id @default(uuid())
+  userId          String     @map("user_id")
+  platform        AdPlatform
+
+  // Platform-specific identifiers
+  platformAccountId String   @map("platform_account_id") // e.g., Google Ads Customer ID
+  accountName       String   @map("account_name")
+  currency          String   @default("USD")
+  timezone          String   @default("UTC")
+
+  // OAuth tokens (encrypted)
+  accessToken       String   @map("access_token") // Encrypted
+  refreshToken      String?  @map("refresh_token") // Encrypted
+  tokenExpiresAt    DateTime? @map("token_expires_at")
+
+  // Account status
+  isActive          Boolean  @default(true) @map("is_active")
+  isConnected       Boolean  @default(true) @map("is_connected")
+  lastSyncAt        DateTime? @map("last_sync_at")
+  syncStatus        String   @default("pending") @map("sync_status") // pending, syncing, success, error
+  syncError         String?  @map("sync_error")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaigns     Campaign[]
+  ads           Ad[]
+  decisionLogs  DecisionLog[]
+  agentActions  AgentAction[]
+
+  @@unique([userId, platform, platformAccountId])
+  @@index([userId])
+  @@index([platform])
+  @@map("ad_accounts")
+}
+
+// ============================================
+// CAMPAIGNS & ADS
+// ============================================
+
+enum CampaignStatus {
+  ENABLED
+  PAUSED
+  REMOVED
+  UNKNOWN
+
+  @@map("campaign_status")
+}
+
+model Campaign {
+  id                String         @id @default(uuid())
+  adAccountId       String         @map("ad_account_id")
+
+  platformCampaignId String        @map("platform_campaign_id") // Original ID from ad platform
+  name               String
+  status             CampaignStatus
+
+  // Budget information
+  budgetAmount       Float?        @map("budget_amount")
+  budgetType         String?       @map("budget_type") // DAILY, LIFETIME
+
+  // Metadata
+  objective          String?
+  bidStrategy        String?       @map("bid_strategy")
+
+  // Timestamps
+  startDate          DateTime?     @map("start_date")
+  endDate            DateTime?     @map("end_date")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  adAccount     AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+  ads           Ad[]
+  metricsDaily  MetricDaily[]
+  decisionLogs  DecisionLog[]
+
+  @@unique([adAccountId, platformCampaignId])
+  @@index([adAccountId])
+  @@index([status])
+  @@map("campaigns")
+}
+
+enum AdStatus {
+  ENABLED
+  PAUSED
+  REMOVED
+  UNKNOWN
+
+  @@map("ad_status")
+}
+
+model Ad {
+  id              String    @id @default(uuid())
+  adAccountId     String    @map("ad_account_id")
+  campaignId      String    @map("campaign_id")
+
+  platformAdId    String    @map("platform_ad_id")
+  name            String
+  status          AdStatus
+
+  // Creative content
+  headline        String?
+  description     String?
+  finalUrl        String?   @map("final_url")
+
+  // Creative assets
+  imageUrl        String?   @map("image_url")
+  videoUrl        String?   @map("video_url")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  adAccount     AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+  campaign      Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  metricsDaily  MetricDaily[]
+
+  @@unique([adAccountId, platformAdId])
+  @@index([campaignId])
+  @@index([status])
+  @@map("ads")
+}
+
+// ============================================
+// METRICS & PERFORMANCE DATA
+// ============================================
+
+enum MetricLevel {
+  ACCOUNT
+  CAMPAIGN
+  AD
+
+  @@map("metric_level")
+}
+
+model MetricDaily {
+  id          String      @id @default(uuid())
+
+  // Flexible entity reference
+  adAccountId String      @map("ad_account_id")
+  level       MetricLevel
+
+  // Foreign keys (nullable based on level)
+  campaignId  String?     @map("campaign_id")
+  adId        String?     @map("ad_id")
+
+  // Time dimension
+  date        DateTime    @db.Date
+
+  // Core metrics (normalized across platforms)
+  impressions Int         @default(0)
+  clicks      Int         @default(0)
+  conversions Float       @default(0)
+  spend       Float       @default(0)
+  revenue     Float       @default(0)
+
+  // Calculated metrics
+  ctr         Float       @default(0) // Click-through rate
+  cpc         Float       @default(0) // Cost per click
+  cpa         Float       @default(0) // Cost per acquisition
+  roas        Float       @default(0) // Return on ad spend
+
+  // Video-specific metrics
+  videoViews  Int?        @default(0) @map("video_views")
+  videoViewRate Float?    @default(0) @map("video_view_rate")
+
+  // Engagement metrics
+  engagements Int?        @default(0)
+
+  // Metadata
+  currency    String      @default("USD")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  campaign Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  ad       Ad?       @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  @@unique([adAccountId, level, date, campaignId, adId])
+  @@index([adAccountId, date])
+  @@index([campaignId, date])
+  @@index([adId, date])
+  @@index([date])
+  @@map("metrics_daily")
+}
+
+// ============================================
+// DECISION ENGINE & LOGS
+// ============================================
+
+enum DecisionType {
+  PAUSE_CAMPAIGN
+  ENABLE_CAMPAIGN
+  INCREASE_BUDGET
+  DECREASE_BUDGET
+  PAUSE_AD
+  ENABLE_AD
+  SCALE_WINNER
+  PROTECT_WINNER
+  ALERT_CREATIVE_FATIGUE
+  ALERT_BUDGET_INEFFICIENCY
+
+  @@map("decision_type")
+}
+
+enum DecisionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXECUTED
+  FAILED
+
+  @@map("decision_status")
+}
+
+model DecisionLog {
+  id              String         @id @default(uuid())
+  userId          String         @map("user_id")
+  adAccountId     String         @map("ad_account_id")
+  campaignId      String?        @map("campaign_id")
+
+  // Decision metadata
+  decisionType    DecisionType   @map("decision_type")
+  status          DecisionStatus @default(PENDING)
+
+  // Rule engine output
+  ruleName        String         @map("rule_name")
+  ruleVersion     String         @default("1.0") @map("rule_version")
+  confidenceScore Float          @map("confidence_score") // 0-100
+
+  // Metrics snapshot at decision time
+  metricsSnapshot Json           @map("metrics_snapshot")
+
+  // Decision details
+  reasoning       String
+  proposedAction  Json           @map("proposed_action") // Structured action details
+
+  // Execution tracking
+  executedAt      DateTime?      @map("executed_at")
+  executedBy      String?        @map("executed_by") // user_id or 'system'
+  executionResult Json?          @map("execution_result")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  adAccount  AdAccount  @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+  campaign   Campaign?  @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([adAccountId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("decision_logs")
+}
+
+// ============================================
+// AI RECOMMENDATIONS
+// ============================================
+
+enum RecommendationType {
+  PERFORMANCE_INSIGHT
+  BUDGET_OPTIMIZATION
+  CREATIVE_REFRESH
+  AUDIENCE_EXPANSION
+  BID_ADJUSTMENT
+  STRATEGIC_PIVOT
+
+  @@map("recommendation_type")
+}
+
+model AiRecommendation {
+  id              String             @id @default(uuid())
+  adAccountId     String             @map("ad_account_id")
+
+  type            RecommendationType
+  priority        Int                @default(50) // 0-100
+
+  // AI-generated content
+  title           String
+  summary         String
+  detailedAnalysis String           @map("detailed_analysis") @db.Text
+
+  // Supporting data
+  dataSnapshot    Json               @map("data_snapshot")
+  confidenceScore Float              @map("confidence_score") // 0-100
+
+  // Action items
+  suggestedActions Json              @map("suggested_actions")
+
+  // Metadata
+  isRead          Boolean            @default(false) @map("is_read")
+  isDismissed     Boolean            @default(false) @map("is_dismissed")
+
+  // AI model info
+  modelUsed       String             @map("model_used")
+  promptVersion   String             @map("prompt_version")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([adAccountId])
+  @@index([priority])
+  @@index([createdAt])
+  @@map("ai_recommendations")
+}
+
+// ============================================
+// CREATIVE INTELLIGENCE
+// ============================================
+
+enum CreativePlatform {
+  TIKTOK
+  INSTAGRAM_REELS
+  YOUTUBE_SHORTS
+  FACEBOOK_REELS
+
+  @@map("creative_platform")
+}
+
+enum CreativePattern {
+  PROBLEM_AGITATION_SOLUTION
+  BEFORE_AFTER
+  TESTIMONIAL
+  TUTORIAL
+  UGC_STYLE
+  TREND_HIJACK
+  EMOTIONAL_STORY
+  DIRECT_RESPONSE
+  LISTICLE
+  CHALLENGE
+
+  @@map("creative_pattern")
+}
+
+model CreativeIdea {
+  id              String           @id @default(uuid())
+  userId          String           @map("user_id")
+
+  // Creative metadata
+  platform        CreativePlatform
+  pattern         CreativePattern
+
+  // Content
+  title           String
+  description     String
+
+  // Hook variants (5-10 options)
+  hooks           Json             // Array of hook strings
+
+  // Storyboard (shot-by-shot)
+  storyboard      Json             // Array of shot objects
+
+  // Call to action
+  cta             String
+
+  // Scoring
+  viralConfidenceScore Float       @map("viral_confidence_score") // 0-100
+  reasoningForScore    String      @map("reasoning_for_score") @db.Text
+
+  // Targeting suggestions
+  targetAudience  Json             @map("target_audience")
+
+  // Status
+  isUsed          Boolean          @default(false) @map("is_used")
+  isFavorite      Boolean          @default(false) @map("is_favorite")
+
+  // AI generation metadata
+  modelUsed       String           @map("model_used")
+  promptVersion   String           @map("prompt_version")
+  generationParams Json            @map("generation_params")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([platform])
+  @@index([pattern])
+  @@index([viralConfidenceScore])
+  @@map("creative_ideas")
+}
+
+model ViralPattern {
+  id          String   @id @default(uuid())
+
+  pattern     CreativePattern @unique
+  name        String
+  description String
+
+  // Pattern structure
+  structure   Json     // Template for this pattern
+
+  // Success metrics
+  avgViralScore Float  @default(0) @map("avg_viral_score")
+  usageCount    Int    @default(0) @map("usage_count")
+
+  // Best practices
+  bestPractices Json   @map("best_practices")
+  examples      Json   // Array of successful examples
+
+  isActive    Boolean  @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("viral_patterns")
+}
+
+// ============================================
+// AGENT SYSTEM
+// ============================================
+
+enum AgentActionType {
+  PAUSE_CAMPAIGN
+  ENABLE_CAMPAIGN
+  ADJUST_BUDGET
+  PAUSE_AD
+  ENABLE_AD
+  DUPLICATE_CAMPAIGN
+  CREATE_AD
+
+  @@map("agent_action_type")
+}
+
+enum AgentActionStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+  EXECUTING
+  COMPLETED
+  FAILED
+  ROLLED_BACK
+
+  @@map("agent_action_status")
+}
+
+model AgentAction {
+  id              String            @id @default(uuid())
+  userId          String            @map("user_id")
+  adAccountId     String            @map("ad_account_id")
+
+  // Action details
+  actionType      AgentActionType   @map("action_type")
+  status          AgentActionStatus @default(PROPOSED)
+
+  // Target entity
+  entityType      String            @map("entity_type") // campaign, ad, etc.
+  entityId        String            @map("entity_id")
+
+  // Proposed changes
+  proposedChanges Json              @map("proposed_changes")
+
+  // Safety & reasoning
+  reasoning       String            @db.Text
+  riskLevel       String            @map("risk_level") // low, medium, high
+  safetyChecks    Json              @map("safety_checks")
+
+  // Impact estimation
+  estimatedImpact Json              @map("estimated_impact")
+
+  // Approval workflow
+  requiresApproval Boolean          @default(true) @map("requires_approval")
+  approvedAt       DateTime?        @map("approved_at")
+  approvedBy       String?          @map("approved_by")
+  rejectedAt       DateTime?        @map("rejected_at")
+  rejectionReason  String?          @map("rejection_reason")
+
+  // Execution
+  executedAt       DateTime?        @map("executed_at")
+  executionResult  Json?            @map("execution_result")
+  executionError   String?          @map("execution_error")
+
+  // Rollback capability
+  canRollback      Boolean          @default(true) @map("can_rollback")
+  rollbackData     Json?            @map("rollback_data")
+  rolledBackAt     DateTime?        @map("rolled_back_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  adAccount AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([adAccountId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("agent_actions")
+}
+
+// ============================================
+// SYSTEM AUDIT & LOGS
+// ============================================
+
+model AuditLog {
+  id          String   @id @default(uuid())
+
+  userId      String?  @map("user_id")
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
+
+  changes     Json?
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
