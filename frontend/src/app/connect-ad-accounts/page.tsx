@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
@@ -16,7 +16,7 @@ interface AdAccount {
   _count?: { campaigns: number };
 }
 
-export default function ConnectAdAccountsPage() {
+function ConnectAdAccountsContent() {
   const { user, isAuthenticated, loading: authLoading, refreshUser } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -463,5 +463,13 @@ export default function ConnectAdAccountsPage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function ConnectAdAccountsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div></div>}>
+      <ConnectAdAccountsContent />
+    </Suspense>
   );
 }
